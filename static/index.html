@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>文献调研智能体</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;font-size:14px;background:#f5f6f8;color:#1a1d23}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:250px;background:#1a1d23;color:#adb5bd;padding:16px;overflow:auto}
+.sidebar h3{font-size:12px;color:#9ca3af;margin:12px 0 6px;text-transform:uppercase}
+.sidebar label{font-size:11px;color:#d1d5db;display:block;margin:6px 0 2px}
+.sidebar textarea,.sidebar input,.sidebar select{width:100%;padding:6px 8px;font-size:12px;border:1px solid #374151;border-radius:4px;background:#111318;color:#e5e7eb}
+.sidebar textarea{resize:vertical;font-family:inherit}
+.btn{display:block;width:100%;padding:8px;font-size:13px;font-weight:600;border:none;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer;margin-top:10px}
+.btn:disabled{opacity:.5}
+.content{margin-left:250px;padding:20px;max-width:800px}
+.empty{text-align:center;padding:60px 0;color:#6b7280}
+.empty h2{font-size:18px;color:#1a1d23}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px}
+.ph{display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;font-size:12px;font-weight:700;background:#e5e7eb;color:#9ca3af;margin:0 8px}
+.ph.act{background:#2563eb;color:#fff}.ph.done{background:#059669;color:#fff}
+.prog{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px;text-align:center}
+.bar{height:5px;background:#e5e7eb;border-radius:3px;margin:10px 0;overflow:hidden}
+.fill{height:100%;background:linear-gradient(90deg,#2563eb,#6366f1,#2563eb);width:0%;background-size:200% 100%;animation:pulse 1.5s ease infinite}
+@keyframes pulse{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.paper{border:1px solid #e5e7eb;border-radius:6px;padding:10px;margin-bottom:6px;background:#fff;animation:fadeIn .3s ease}
+.paper h4{font-size:13px;font-weight:600}
+.meta{font-size:11px;color:#9ca3af;margin-top:3px}
+.rsn{font-size:11px;color:#6b7280;margin-top:4px;padding-left:8px;border-left:2px solid #e5e7eb}
+.bdg{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:3px;font-size:10px;font-weight:700;float:right}
+.s5{background:#d1fae5;color:#059669}.s4{background:#dbeafe;color:#2563eb}.s3{background:#fef3c7;color:#d97706}
+.tag{display:inline-block;padding:1px 4px;font-size:9px;border-radius:2px;background:#f3f4f6;color:#6b7280}
+.chip{display:inline-block;padding:3px 8px;font-size:11px;color:#2563eb;border:1px solid #dbeafe;border-radius:12px;cursor:pointer;margin:2px}
+.hidden{display:none!important}
+</style></head><body>
+<div class="sidebar">
+<h3>新建调研</h3>
+<label>综述主题</label>
+<textarea id="topic" rows="2" placeholder="例如：图神经网络药物靶点预测"></textarea>
+<label>API Key <span style="color:#6b7280;font-weight:400">(可选)</span></label>
+<input id="apikey" type="password" placeholder="DeepSeek Key">
+<label>提供商</label>
+<select id="provider"><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option></select>
+<button class="btn" id="searchBtn" onclick="doSearch()">开始文献调研</button>
+<h3>示例</h3>
+<div class="chip" onclick="fill(0)">图神经网络药物靶点</div>
+<div class="chip" onclick="fill(1)">医疗LLM可解释性</div>
+<div class="chip" onclick="fill(2)">多模态情感分析</div>
+<h3>局域网分享</h3>
+<div style="font-size:11px;color:#6b7280">
+同网络设备访问：<br><b id="lanurl" style="font-size:13px;color:#d1d5db">检测IP中...</b><br>
+<button class="chip" onclick="copyUrl()" style="margin-top:4px">复制链接</button>
+</div>
+</div>
+<div class="content">
+<div id="empty"><div class="empty"><h2>文献调研智能体</h2><p>输入主题自动检索 ArXiv + CrossRef + OpenAlex</p></div></div>
+<div id="prog" class="prog hidden">
+  <div><span class="ph" id="pp1">1</span><span class="ph" id="pp2">2</span><span class="ph" id="pp3">3</span><span class="ph" id="pp4">4</span><span class="ph" id="pp5">5</span></div>
+  <div class="bar"><div class="fill" id="fill"></div></div>
+  <div id="pmsg" style="color:#6b7280;font-size:13px">初始化...</div>
+  <div id="elapsed" style="font-size:11px;color:#9ca3af;margin-top:4px"></div>
+</div>
+<div id="decomp" class="card hidden"></div>
+<div id="resArea" class="hidden">
+  <h3 style="display:inline">检索结果</h3> <span id="rc" style="font-weight:400;font-size:13px;color:#9ca3af">(0)</span>
+  <div style="float:right">
+    <button class="chip" onclick="filt('all')">全部</button>
+    <button class="chip" onclick="filt('method')">方法</button>
+    <button class="chip" onclick="filt('survey')">综述</button>
+  </div>
+</div>
+<div id="papers" style="margin-top:8px"></div>
+<div id="gap" class="card hidden"></div>
+</div>
+<script>
+var tid,ptm,alldata=[],_t0;
+function fill(n){var a=["基于图神经网络的药物靶点预测","大语言模型在医疗领域可解释性的挑战与解决方案","多模态情感分析综述"];document.getElementById("topic").value=a[n]}
+function toast(m,t){var d=document.createElement("div");d.className="toast";d.style.background=t=="error"?"#fef2f2":"#f0fdf4";d.style.color=t=="error"?"#dc2626":"#059669";d.textContent=m;document.body.appendChild(d);setTimeout(function(){d.remove()},2000)}
+function doSearch(){var t=document.getElementById("topic").value.trim();if(!t){toast("请输入主题","error");return}
+var b=document.getElementById("searchBtn");b.disabled=true;b.textContent="搜索中...";
+var k=document.getElementById("apikey").value.trim(),p=document.getElementById("provider").value;
+var x=new XMLHttpRequest();x.open("POST","/api/search",true);x.setRequestHeader("Content-Type","application/json");
+if(k)x.setRequestHeader("X-API-Key",k);x.setRequestHeader("X-LLM-Provider",p);x.setRequestHeader("X-LLM-Model",p=="deepseek"?"deepseek-chat":"gpt-4o-mini");
+x.onreadystatechange=function(){if(x.readyState===4){if(x.status===200){var d=JSON.parse(x.responseText);tid=d.task_id;showProg();poll()}else{toast("请求失败: "+x.status,"error");b.disabled=false;b.textContent="开始文献调研"}}};
+x.send(JSON.stringify({topic:t,max_iterations:2}))}
+function showProg(){_t0=Date.now();
+var ids=["empty","decomp","resArea","gap"];for(var i=0;i<ids.length;i++)document.getElementById(ids[i]).className=ids[i]=="gap"||ids[i]=="decomp"?"card hidden":"hidden";
+document.getElementById("prog").className="prog";document.getElementById("fill").style.width="5%";
+document.getElementById("pmsg").textContent="搜索中...";document.getElementById("elapsed").textContent="";
+for(var i=1;i<=5;i++)document.getElementById("pp"+i).className="ph";document.getElementById("pp1").className="ph act"}
+function poll(){if(ptm)clearInterval(ptm);ptm=setInterval(function(){
+var et=document.getElementById("elapsed");if(et&&_t0){var sec=Math.floor((Date.now()-_t0)/1000);et.textContent="已用 "+sec+" 秒"}
+var x=new XMLHttpRequest();x.open("GET","/api/status/"+tid,true);
+x.onreadystatechange=function(){if(x.readyState===4&&x.status===200){
+var s=JSON.parse(x.responseText);up(s);
+if(s.status==="completed"){clearInterval(ptm);ptm=null;done(s);document.getElementById("searchBtn").disabled=false;document.getElementById("searchBtn").textContent="开始文献调研"}
+else if(s.status==="error"){clearInterval(ptm);ptm=null;document.getElementById("pmsg").textContent="错误: "+(s.error||s.message);document.getElementById("pmsg").style.color="#dc2626";document.getElementById("searchBtn").disabled=false;document.getElementById("searchBtn").textContent="开始文献调研"}}};
+x.send()},800)}
+function up(s){document.getElementById("fill").style.width=s.progress_pct+"%";
+document.getElementById("pmsg").textContent=s.message||"";
+var m={decompose:1,search:2,expand:2,validate:3,gap:4,final:5},idx=m[s.phase]||0;
+for(var i=1;i<=5;i++){var e=document.getElementById("pp"+i);if(i<idx)e.className="ph done";else if(i===idx)e.className="ph act";else e.className="ph"}}
+function done(s){document.getElementById("prog").className="prog hidden";for(var i=1;i<=5;i++)document.getElementById("pp"+i).className="ph done";
+if(s.decomposition){var d=s.decomposition;var h="<h3>主题解析</h3><p><b>"+d.core_question+"</b></p>";if(d.sub_topics&&d.sub_topics.length>0){h+="<div style='margin-top:8px;display:flex;flex-wrap:wrap;gap:6px'>";for(var i=0;i<d.sub_topics.length;i++){h+="<div style='background:#f5f6f8;border-radius:4px;padding:6px;font-size:12px'><b>"+d.sub_topics[i].aspect+"</b>";var items=d.sub_topics[i].methods||d.sub_topics[i].settings||[];for(var j=0;j<items.length;j++)h+="<br>"+items[j];h+="</div>"}h+="</div>"}document.getElementById("decomp").innerHTML=h;document.getElementById("decomp").className="card"}
+alldata=s.results||[];document.getElementById("resArea").className="";document.getElementById("rc").textContent="("+alldata.length+")";
+renderPapers(alldata,0);
+if(s.gap_suggestions&&s.gap_suggestions.length>0){var g="<h3>补充搜索建议</h3><ul>";for(var i=0;i<s.gap_suggestions.length;i++){var it=s.gap_suggestions[i];if(typeof it==="object"){it=(it.recommendation||it.suggestion||"")+(it.reason?"("+it.reason+")":"")}g+="<li>"+it+"</li>"}g+="</ul>";document.getElementById("gap").innerHTML=g;document.getElementById("gap").className="card"}}
+function renderPapers(ps,idx){if(!ps||ps.length===0){document.getElementById("papers").innerHTML="<div class='card' style='text-align:center;color:#9ca3af;padding:30px'>未找到相关文献</div>";return}
+var end=Math.min(idx+5,ps.length);var h="";for(var i=idx;i<end;i++){var p=ps[i];var a=p.authors&&p.authors.length>0?p.authors.slice(0,3).join(", ")+(p.authors.length>3?" et al.":"")+" ("+(p.year||"n.d.")+")":"No authors";h+="<div class='paper'><span class='bdg s"+p.score+"'>"+p.score+"</span><h4>"+(p.title||"Untitled")+"</h4><div class='meta'>"+a+" <span class='tag'>"+(p.paper_type||"other")+"</span> <span class='tag'>"+(p.source||"")+"</span></div>"+(p.reason?"<div class='rsn'>"+p.reason+"</div>":"")+"</div>"}
+document.getElementById("papers").innerHTML+=h;
+if(end<ps.length){setTimeout(function(){renderPapers(ps,end)},200)}}
+function filt(t){if(t==="all"){document.getElementById("papers").innerHTML="";renderPapers(alldata,0);document.getElementById("rc").textContent="("+alldata.length+")"}else{var ps=[];for(var i=0;i<alldata.length;i++)if(alldata[i].paper_type===t)ps.push(alldata[i]);document.getElementById("papers").innerHTML="";renderPapers(ps,0);document.getElementById("rc").textContent="("+ps.length+"/"+alldata.length+")"}}
+function copyUrl(){var u=document.getElementById("lanurl");if(u&&u.textContent.indexOf("http")>=0){var ta=document.createElement("textarea");ta.value=u.textContent;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();toast("已复制链接")}}
+(function(){var x=new XMLHttpRequest();x.open("GET","/api/lanip",true);x.onreadystatechange=function(){if(x.readyState===4&&x.status===200){try{var d=JSON.parse(x.responseText);if(d.ip){document.getElementById("lanurl").textContent="http://"+d.ip+":8765/"}}catch(e){}}};x.send()})();
+</script>
+</body>
+</html>
