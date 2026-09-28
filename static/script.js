@@ -131,8 +131,22 @@
     if (key) h["X-API-Key"] = key;
     h["X-LLM-Provider"] = state.provider;
     h["X-LLM-Model"] = state.model;
+    h["X-Device"] = deviceTag();
     updateKeyBadge();
     return h;
+  }
+
+  /** 把设备类型一并报给服务器，便于在日志里分辨"谁在用"（排查手机/电脑差异用）。 */
+  function deviceTag() {
+    var ua = navigator.userAgent || "";
+    var kind = "desktop";
+    if (/MicroMessenger/i.test(ua)) kind = "WeChat";
+    else if (/iPhone/i.test(ua)) kind = "iPhone";
+    else if (/iPad/i.test(ua)) kind = "iPad";
+    else if (/Android/i.test(ua)) kind = /Mobile/i.test(ua) ? "Android-phone" : "Android-tablet";
+    var br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome"
+           : /Safari\//.test(ua) ? "Safari" : /Firefox\//.test(ua) ? "Firefox" : "other";
+    return kind + "/" + br;
   }
 
   /**

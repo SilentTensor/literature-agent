@@ -1910,12 +1910,20 @@ if os.path.isdir(static_dir):
         """
         前端三件套（html/css/js）要求浏览器每次回源校验。
         否则改了脚本、用户浏览器仍跑旧缓存，会出现"页面明明修好了却还是坏"的假象。
+
+        顺带把"设备类型"记进日志：排查"电脑能用、手机不能用"这类问题时，
+        只有客户端 IP 不够，还得知道到底是哪台设备、什么浏览器。
         """
         response = await call_next(request)
         path = request.url.path
         if path.endswith((".html", ".css", ".js")) or path in ("/", ""):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
+
+        dev = request.headers.get("x-device", "")
+        if dev and not path.endswith((".css", ".js", ".svg", ".ico")):
+            logger.info("[DEVICE] %s  %s  %s %s",
+                        _client_ip(request), dev, request.method, path)
         return response
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
