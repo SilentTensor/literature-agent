@@ -1,0 +1,6 @@
+# 运行服务本身只需要 requirements.txt 里的依赖。
+# 下面这些是"跑自检脚本"才需要的额外依赖，部署时不必安装。
+-r requirements.txt
+
+# browser_e2e.py 通过 CDP 驱动真实浏览器，需要 websocket 客户端
+websockets>=12.0

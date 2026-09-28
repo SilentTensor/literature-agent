@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>文献调研智能体 · AI Literature Survey Agent</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <div>
+          <h1>文献调研智能体</h1>
+          <div class="subtitle">AI Literature Survey Agent</div>
+        </div>
+      </div>
+      <div class="badge">
+        <span id="llm-badge" title="LLM 状态">LLM：检测中…</span>
+        <span class="sep">|</span>
+        <span id="src-badge" title="可用数据源">数据源：ArXiv · CrossRef · OpenAlex · S2</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- ── 侧栏 ───────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <section class="sidebar-section">
+        <h3>新建调研</h3>
+
+        <div class="form-group">
+          <label for="topic-input">综述主题 <span class="optional">(必填)</span></label>
+          <textarea id="topic-input" rows="3" placeholder="例如：基于图神经网络的药物靶点预测"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="api-key-input">API Key <span class="optional">(可选，留空则用服务端配置)</span></label>
+          <input id="api-key-input" type="password" placeholder="sk-..." autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="llm-provider">LLM 提供商</label>
+          <select id="llm-provider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="model-select">模型</label>
+          <select id="model-select"></select>
+        </div>
+
+        <div class="form-group">
+          <label for="iterations">迭代轮数</label>
+          <select id="iterations">
+            <option value="1" selected>1 轮（推荐，最快）</option>
+            <option value="2">2 轮（含缺口补充检索）</option>
+            <option value="3">3 轮（最全，较慢）</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="notes-input">补充说明 <span class="optional">(可选)</span></label>
+          <textarea id="notes-input" rows="2" placeholder="例如：聚焦近三年医学影像方向"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="seed-input">种子论文 ID <span class="optional">(可选，逗号分隔)</span></label>
+          <input id="seed-input" placeholder="Semantic Scholar paperId">
+        </div>
+
+        <button class="btn-primary" id="btn-search" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          开始文献调研
+        </button>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>示例主题</h3>
+        <div class="example-topics">
+          <button class="chip" type="button" data-example="基于图神经网络的药物靶点预测">图神经网络药物靶点</button>
+          <button class="chip" type="button" data-example="大语言模型在医疗领域可解释性的挑战与解决方案">医疗 LLM 可解释性</button>
+          <button class="chip" type="button" data-example="多模态情感分析综述">多模态情感分析</button>
+        </div>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>局域网分享</h3>
+        <div style="font-size:12px;color:#9ca3af;line-height:1.7">
+          同网络设备可访问：<br>
+          <b id="lan-url" style="color:#e5e7eb;font-size:12px">检测中…</b><br>
+          <button class="btn-text" id="btn-copy-url" type="button" style="color:#93c5fd;padding-left:0">复制链接</button>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ── 主内容区 ───────────────────────────────────────── -->
+    <main class="content">
+
+      <div id="empty-state" class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <h2>开始你的文献调研</h2>
+        <p>输入研究主题，自动在 ArXiv、CrossRef、OpenAlex、Semantic Scholar 中并行检索，<br>再由 LLM 逐篇评估相关性并指出覆盖缺口。</p>
+        <div class="example-topics">
+          <button class="chip" type="button" data-example="基于图神经网络的药物靶点预测">图神经网络药物靶点</button>
+          <button class="chip" type="button" data-example="大语言模型在医疗领域可解释性的挑战与解决方案">医疗 LLM 可解释性</button>
+          <button class="chip" type="button" data-example="多模态情感分析综述">多模态情感分析</button>
+        </div>
+      </div>
+
+      <!-- 进度面板 -->
+      <div id="progress-panel" class="progress-panel hidden">
+        <div class="progress-header">
+          <h3>调研进行中</h3>
+          <span class="task-id" id="task-id"></span>
+        </div>
+        <div class="progress-bar-container"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="progress-phases">
+          <div class="phase" data-phase="decompose"><div class="phase-icon">1</div><div class="phase-label">主题解析</div><div class="phase-status">等待中</div></div>
+          <div class="phase" data-phase="search"><div class="phase-icon">2</div><div class="phase-label">多源检索</div><div class="phase-status">等待中</div></div>
+          <div class="phase" data-phase="expand"><div class="phase-icon">3</div><div class="phase-label">引文扩展</div><div class="phase-status">等待中</div></div>
+          <div class="phase" data-phase="validate"><div class="phase-icon">4</div><div class="phase-label">相关性验证</div><div class="phase-status">等待中</div></div>
+          <div class="phase" data-phase="gap"><div class="phase-icon">5</div><div class="phase-label">缺口分析</div><div class="phase-status">等待中</div></div>
+        </div>
+        <div class="progress-message" id="progress-message">初始化…</div>
+        <div style="text-align:center;font-size:11px;color:#9ca3af;margin-top:6px" id="elapsed"></div>
+      </div>
+
+      <!-- 结果区 -->
+      <div id="results-panel" class="hidden">
+
+        <div class="card hidden" id="decomposition-card">
+          <h3>主题解析</h3>
+          <div class="decomposition-content" id="decomposition-content"></div>
+        </div>
+
+        <div class="card hidden" id="gap-card">
+          <h3>补充检索建议</h3>
+          <ul class="gap-list" id="gap-list"></ul>
+        </div>
+
+        <div class="results-actions">
+          <h3>检索结果 <span class="result-count" id="result-count">0 篇文献</span></h3>
+          <div class="actions">
+            <button class="btn-secondary" id="btn-refine" type="button">补充检索</button>
+            <button class="btn-secondary" id="btn-export-json" type="button">导出 JSON</button>
+            <button class="btn-secondary" id="btn-export-bibtex" type="button">导出 BibTeX</button>
+            <button class="btn-secondary" id="btn-export-md" type="button">导出 Markdown</button>
+            <button class="btn-secondary" id="btn-export-csv" type="button">导出 CSV</button>
+          </div>
+        </div>
+
+        <div class="filter-tabs">
+          <button class="filter-btn active" type="button" data-type="all">全部</button>
+          <button class="filter-btn" type="button" data-type="survey">综述</button>
+          <button class="filter-btn" type="button" data-type="method">方法</button>
+          <button class="filter-btn" type="button" data-type="application">应用</button>
+          <button class="filter-btn" type="button" data-type="theory">理论</button>
+          <button class="filter-btn" type="button" data-type="benchmark">基准</button>
+        </div>
+
+        <div class="paper-list" id="paper-list"></div>
+
+        <!-- 补充检索面板 -->
+        <div class="card refine-panel hidden" id="refine-panel" style="margin-top:16px">
+          <h3>补充检索</h3>
+          <div class="form-group">
+            <label for="refine-feedback">想补充什么方向的文献？</label>
+            <textarea id="refine-feedback" rows="2" placeholder="例如：增加 2024 年之后的临床验证研究"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="refine-keywords">额外关键词 <span class="optional">(可选，逗号分隔)</span></label>
+            <input id="refine-keywords" placeholder="clinical trial, prospective study">
+          </div>
+          <div class="refine-actions">
+            <button class="btn-primary" id="btn-refine-submit" type="button">开始补充检索</button>
+            <button class="btn-secondary" id="btn-refine-cancel" type="button">取消</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 导出弹窗 -->
+  <div class="modal-overlay hidden" id="export-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="export-title">导出</h3>
+        <div class="actions">
+          <button class="btn-secondary" id="btn-copy-export" type="button">复制</button>
+          <button class="btn-secondary" id="btn-download-export" type="button">下载</button>
+          <button class="btn-secondary" id="btn-close-export" type="button">关闭</button>
+        </div>
+      </div>
+      <textarea class="export-content" id="export-content" readonly></textarea>
+    </div>
+  </div>
+
+</div>
+<script src="/script.js"></script>
+</body>
+</html>

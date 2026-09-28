@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: literature-agent
+    runtime: python
+    plan: free
+    region: singapore          # 面向国内访问者，比默认的 oregon 快很多
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"
+      # ── LLM（可选）───────────────────────────────────────────────
+      # 重要：本服务默认「只用访客自带 Key」。若在这里填了 LLM_API_KEY，
+      # 任何匿名访客都能白用你的额度；确实想让所有人共用，再额外把
+      # ALLOW_SERVER_KEY_FOR_ANON 设为 1。
+      - key: LLM_PROVIDER
+        value: deepseek
+      - key: LLM_API_KEY
+        sync: false
+      - key: ALLOW_SERVER_KEY_FOR_ANON
+        value: "0"
+      # ── 提高数据源配额的推荐做法 ──────────────────────────────────
+      # 填一个邮箱即可进入 CrossRef / OpenAlex 的"礼貌池"，明显减少 429
+      - key: CONTACT_EMAIL
+        sync: false
+      - key: S2_API_KEY
+        sync: false
+      - key: OPENALEX_API_KEY
+        sync: false
+      # ── 公开部署保护 ─────────────────────────────────────────────
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "12"
+      - key: MAX_ACTIVE_TASKS
+        value: "6"

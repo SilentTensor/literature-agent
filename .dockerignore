@@ -1,0 +1,34 @@
+# 构建镜像时不要把本机环境和无关文件塞进去
+# （Docker 不读 .gitignore，必须单独有这个文件）
+
+# 本机虚拟环境 / 缓存
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行时产物
+logs/
+*.log
+.cdp-profile/
+shot_results.png
+
+# 密钥
+.env
+.env.*
+
+# 与镜像运行无关的文件（verify.py 保留，便于在容器里自检）
+.git/
+.gitignore
+.dockerignore
+.devcontainer/
+.gitattributes
+browser_e2e.py
+requirements-dev.txt
+run-agent.ps1
+run-agent-hidden.vbs
+watchdog.ps1
+render.yaml
+Dockerfile
