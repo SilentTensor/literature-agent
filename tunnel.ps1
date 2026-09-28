@@ -94,7 +94,6 @@ while ($true) {
     } catch {
         Write-Log "tunnel-runner crashed: $($_.Exception.Message)"
     }
-
     Write-Log "restarting in 10 seconds ..."
     Start-Sleep -Seconds 10
 }

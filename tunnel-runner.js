@@ -13,6 +13,9 @@ const path = require("path");
 const PORT = Number(process.argv[2] || 8765);
 const URL_FILE = process.argv[3] || path.join(__dirname, "..", "public-url.txt");
 const LOG_FILE = process.argv[4] || path.join(__dirname, "tunnel.log");
+// 想要一个稳定的网址：向 localtunnel 申请固定子域名。
+// 注意官方说明"不保证一定给到这个名字"，所以下面仍会如实记录实际拿到的地址。
+const WANT_SUBDOMAIN = (process.argv[5] || process.env.TUNNEL_SUBDOMAIN || "literature-agent-sdu").trim();
 
 function log(msg) {
   const line = new Date().toISOString().replace("T", " ").slice(0, 19) + "  " + msg;
@@ -46,10 +49,15 @@ try {
 log("========== tunnel starting for port " + PORT + " ==========");
 
 function connect(attempt) {
-  log("connecting (attempt " + attempt + ") ...");
+  const opts = { port: PORT };
+  if (WANT_SUBDOMAIN) { opts.subdomain = WANT_SUBDOMAIN; }
+  log("connecting (attempt " + attempt + ")" + (WANT_SUBDOMAIN ? ", requesting subdomain '" + WANT_SUBDOMAIN + "'" : "") + " ...");
 
-  localtunnel({ port: PORT })
+  localtunnel(opts)
     .then((tunnel) => {
+      if (WANT_SUBDOMAIN && tunnel.url.indexOf(WANT_SUBDOMAIN) < 0) {
+        log("note: requested subdomain not granted, actual url follows");
+      }
       publish(tunnel.url);
 
       tunnel.on("close", () => {
