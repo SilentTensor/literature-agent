@@ -587,7 +587,9 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ip && d.ip !== "unknown") {
-          $("lan-url").textContent = location.protocol + "//" + d.ip + ":" + (location.port || "8765") + "/";
+          // 端口要按当前实际访问的端口来拼，不能写死 8765，
+          // 否则换端口运行时这里会显示一个打不开的地址。
+          $("lan-url").textContent = location.protocol + "//" + d.ip + ":" + (location.port || "80") + "/";
         } else {
           $("lan-url").textContent = location.origin + "/";
         }
