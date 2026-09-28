@@ -68,13 +68,26 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyCon
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 3
 
-# Make sure the local service is up before publishing it
+# Make sure the local service is up before publishing it.
+# Start it through the windowless VBS launcher: invoking powershell.exe
+# directly here would flash a console window at the user.
 try {
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri "http://127.0.0.1:$Port/api/health" | Out-Null
 } catch {
     Write-Log "local service not answering - starting it via watchdog.ps1"
-    $wd = Join-Path $Root "watchdog.ps1"
-    if (Test-Path $wd) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wd | Out-Null }
+    $vbs = Join-Path $Root "run-hidden.vbs"
+    if (Test-Path $vbs) {
+        Start-Process -FilePath "wscript.exe" -ArgumentList "`"$vbs`"", "watchdog.ps1" `
+            -WorkingDirectory $Root -WindowStyle Hidden
+    } else {
+        $wd = Join-Path $Root "watchdog.ps1"
+        if (Test-Path $wd) {
+            Start-Process -FilePath "powershell.exe" `
+                -ArgumentList "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", `
+                              "-ExecutionPolicy", "Bypass", "-File", "`"$wd`"" `
+                -WorkingDirectory $Root -WindowStyle Hidden
+        }
+    }
     Start-Sleep -Seconds 12
 }
 
