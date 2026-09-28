@@ -46,7 +46,9 @@ logger = logging.getLogger("literature_agent")
 
 # 部署时（run-agent.ps1 / systemd / Docker）可通过 LOG_FILE 指定日志文件。
 # 由 Python 自己打开文件，可以保证 UTF-8 编码正确，而且服务运行期间日志仍可被读取。
-LOG_FILE = os.environ.get("LOG_FILE", "")
+_LOG_FILE = os.environ.get("LOG_FILE", "")
+LOG_FILE = _LOG_FILE
+_log_config: Optional[dict[str, Any]] = None
 if LOG_FILE:
     try:
         os.makedirs(os.path.dirname(os.path.abspath(LOG_FILE)), exist_ok=True)
@@ -58,7 +60,34 @@ if LOG_FILE:
             _lg = logging.getLogger(_name)
             _lg.addHandler(_fh)
             _lg.propagate = False
-        logger.info("日志同时写入：%s", LOG_FILE)
+        # 访问日志交给 uvicorn 输出，这样"谁在什么时候访问了什么"会进日志文件。
+        # 排查"别人打不开"这类问题时，这是唯一能证明请求到底有没有到达服务端的证据。
+        if "uvicorn" not in globals():
+            import uvicorn as _uvicorn
+            globals()["uvicorn"] = _uvicorn
+        if _log_config is None:
+            _log_config = {
+                "version": 1,
+                "disable_existing_loggers": False,
+                "formatters": {
+                    "plain": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+                    "access": {"format": "%(asctime)s [ACCESS] %(message)s"},
+                },
+                "handlers": {
+                    "console": {"class": "logging.StreamHandler", "formatter": "plain"},
+                    "file": {"class": "logging.FileHandler", "formatter": "plain",
+                             "filename": LOG_FILE, "encoding": "utf-8"},
+                    "access": {"class": "logging.StreamHandler", "formatter": "access"},
+                    "accessfile": {"class": "logging.FileHandler", "formatter": "access",
+                                   "filename": LOG_FILE, "encoding": "utf-8"},
+                },
+                "loggers": {
+                    "uvicorn": {"handlers": ["console", "file"], "level": "INFO", "propagate": False},
+                    "uvicorn.error": {"level": "INFO"},
+                    "uvicorn.access": {"handlers": ["access", "accessfile"], "level": "INFO", "propagate": False},
+                },
+            }
+        logger.info("日志同时写入：%s（含访问日志：谁访问了什么）", LOG_FILE)
     except Exception as _e:  # 日志失败不能影响主流程
         logger.warning("无法打开日志文件 %s：%s", LOG_FILE, _e)
 
@@ -1901,4 +1930,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT") or os.environ.get("APP_PORT") or 8765)
     host = os.environ.get("HOST", "0.0.0.0")
     logger.info("文献调研智能体启动中 → http://%s:%d/", "127.0.0.1" if host == "0.0.0.0" else host, port)
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, log_config=_log_config)

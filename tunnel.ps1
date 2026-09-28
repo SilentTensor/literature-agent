@@ -41,6 +41,10 @@ if (-not $Node) {
 }
 
 # --- make sure the local service is up -------------------------------
+# 注意：这里不自己启动服务，只交给 watchdog.ps1。
+# 之前的版本用 Get-Command python 找解释器，会拿到系统 Python 而不是项目自带的
+# .venv，导致服务跑在一个不写日志、"哑"的进程上——排查问题时完全看不到线索。
+# watchdog.ps1 用的是 .venv，并且会设置 LOG_FILE，是唯一正确的启动入口。
 $localUp = $false
 for ($i = 0; $i -lt 15; $i++) {
     try {
@@ -50,7 +54,7 @@ for ($i = 0; $i -lt 15; $i++) {
     Start-Sleep -Seconds 3
 }
 if (-not $localUp) {
-    Write-Log "local service not responding - asking the watchdog to start it"
+    Write-Log "local service not responding - handing over to watchdog.ps1 (the only launcher that uses .venv and logs)"
     $wd = Join-Path $Root "watchdog.ps1"
     if (Test-Path $wd) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wd | Out-Null }
     Start-Sleep -Seconds 15
