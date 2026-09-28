@@ -20,6 +20,9 @@
     model: "deepseek-chat",
     exportFmt: "json",
   };
+  // 服务器端状态（来自 /api/config），用于计算徽章文案
+  var serverHasKey = false;
+  var serverKeyForAnon = false;
 
   /* ── 小工具 ───────────────────────────────────────────────── */
   function $(id) { return document.getElementById(id); }
@@ -55,9 +58,20 @@
   }
 
   /* ── 配置：提供商 / 模型 / Key 持久化 ─────────────────────── */
+  // 顺序即优先级，第一项为默认值。
+  // deepseek-reasoner 不支持 JSON 输出模式，本程序需要结构化结果，
+  // 因此放在最后并加注说明（选中时后端会自动兜底，但会明显变慢、变贵）。
   var MODELS = {
     openai: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
     deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  };
+
+  var MODEL_LABELS = {
+    "deepseek-chat": "deepseek-chat（推荐）",
+    "deepseek-reasoner": "deepseek-reasoner（慢，且不支持 JSON 模式）",
+    "gpt-4o-mini": "gpt-4o-mini（推荐）",
+    "gpt-4o": "gpt-4o",
+    "gpt-4-turbo": "gpt-4-turbo",
   };
 
   // API Key 只放在 sessionStorage：关掉标签页即失效。
@@ -77,7 +91,7 @@
     var sel = $("model-select");
     var list = MODELS[state.provider] || MODELS.openai;
     sel.innerHTML = list.map(function (m) {
-      return '<option value="' + esc(m) + '">' + esc(m) + "</option>";
+      return '<option value="' + esc(m) + '">' + esc(MODEL_LABELS[m] || m) + "</option>";
     }).join("");
     if (keepValue && list.indexOf(keepValue) >= 0) sel.value = keepValue;
     state.model = sel.value;
@@ -117,7 +131,35 @@
     if (key) h["X-API-Key"] = key;
     h["X-LLM-Provider"] = state.provider;
     h["X-LLM-Model"] = state.model;
+    updateKeyBadge();
     return h;
+  }
+
+  /**
+   * 徽章要反映"这一次请求会不会真的用上 LLM"。
+   * 旧版只看服务器有没有配 Key，用户自己填了 Key 也一直显示"未配置"，属于误导。
+   */
+  function updateKeyBadge() {
+    var badge = $("llm-badge");
+    if (!badge) return;
+    var hasOwn = !!$("api-key-input").value.trim();
+    if (hasOwn) {
+      badge.textContent = "LLM：已启用你自己的 Key（" + state.model + "）";
+      badge.title = "你的 Key 只保存在本标签页（sessionStorage），关闭标签页即失效，" +
+                    "仅随请求发送给你正在使用的这个服务器。";
+      badge.style.color = "#059669";
+    } else if (serverHasKey && serverKeyForAnon) {
+      badge.textContent = "LLM：服务器已配置（全部访客可用）";
+      badge.style.color = "";
+    } else if (serverHasKey) {
+      badge.textContent = "LLM：需自带 API Key";
+      badge.title = "服务器配了 Key，但只对自带 Key 的请求生效。在左侧填入你自己的 Key 即可启用语义筛选。";
+      badge.style.color = "";
+    } else {
+      badge.textContent = "LLM：未配置 Key（启发式筛选）";
+      badge.title = "在左侧填入 DeepSeek / OpenAI Key 可启用逐篇语义评分。留空也能正常检索。";
+      badge.style.color = "";
+    }
   }
 
   function setSearching(on) {
@@ -463,9 +505,12 @@
       state.provider = this.value;
       renderModels(null);
       saveConfig();
+      updateKeyBadge();
     });
-    $("model-select").addEventListener("change", function () { state.model = this.value; saveConfig(); });
-    $("api-key-input").addEventListener("change", saveConfig);
+    $("model-select").addEventListener("change", function () { state.model = this.value; saveConfig(); updateKeyBadge(); });
+    $("api-key-input").addEventListener("change", function () { saveConfig(); updateKeyBadge(); });
+    $("api-key-input").addEventListener("input", updateKeyBadge);
+    $("api-key-input").addEventListener("blur", function () { saveConfig(); updateKeyBadge(); });
     $("iterations").addEventListener("change", saveConfig);
 
     document.querySelectorAll("[data-example]").forEach(function (el) {
@@ -526,18 +571,9 @@
     fetch(API_BASE + "/api/config")
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
-        var badge = $("llm-badge");
-        if (cfg.server_key_configured && cfg.server_key_for_anonymous) {
-          badge.textContent = "LLM：服务端已配置（全部访客可用）";
-          badge.title = "服务器已配置 LLM Key，且允许匿名访客使用。";
-        } else if (cfg.server_key_configured) {
-          badge.textContent = "LLM：需自带 API Key";
-          badge.title = "服务器已配置 Key，但仅对自带 X-API-Key 的请求生效（防止匿名访客消耗额度）。" +
-                        "在左侧填入你自己的 Key 即可启用语义筛选。";
-        } else {
-          badge.textContent = "LLM：未配置 Key（启发式筛选）";
-          badge.title = "在左侧填入 DeepSeek / OpenAI Key 可启用逐篇语义评分。";
-        }
+        serverHasKey = !!cfg.server_key_configured;
+        serverKeyForAnon = !!cfg.server_key_for_anonymous;
+        updateKeyBadge();
         if (cfg.sources && cfg.sources.length) {
           $("src-badge").textContent = "数据源：" + cfg.sources.map(function (s) { return s.label; }).join(" · ");
         }

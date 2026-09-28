@@ -762,8 +762,50 @@ def _extract_json(content: str) -> Any:
     return None
 
 
-async def _llm_json(llm: LLMConfig, prompt: str, temperature: float = 0.0, max_tokens: int = 2048) -> Any:
-    """调用 OpenAI 兼容接口并解析出 JSON；失败返回 None（调用方需容错）。"""
+def _choice_text(resp: Any) -> tuple[str, str, str]:
+    """
+    取出模型返回的正文。
+
+    推理模型（deepseek-reasoner / R1 系列）**不支持 response_format=json_object**，
+    常见表现是 content 为空、答案全在 reasoning_content 里。这里两种情况都兜住：
+    返回 (正文, 推理过程, 结束原因)。
+    """
+    try:
+        choice = resp.choices[0]
+    except (AttributeError, IndexError, TypeError):
+        return "", "", ""
+
+    message = getattr(choice, "message", None)
+    content = ""
+    reasoning = ""
+    if message is not None:
+        content = (getattr(message, "content", None) or "").strip()
+        # reasoning_content 不是 OpenAI 标准字段，用多种方式尝试读取
+        reasoning = (getattr(message, "reasoning_content", None) or "").strip()
+        if not reasoning:
+            extra = getattr(message, "model_extra", None) or {}
+            reasoning = str(extra.get("reasoning_content") or "").strip()
+        if not content and not reasoning:
+            try:
+                dumped = message.model_dump()
+                content = str(dumped.get("content") or "").strip()
+                reasoning = str(dumped.get("reasoning_content") or "").strip()
+            except Exception:
+                pass
+
+    finish = str(getattr(choice, "finish_reason", "") or "")
+    return content, reasoning, finish
+
+
+async def _llm_json(llm: LLMConfig, prompt: str, temperature: float = 0.0, max_tokens: int = 4096) -> Any:
+    """
+    调用 OpenAI 兼容接口并解析出 JSON；失败返回 None（调用方需容错）。
+
+    针对推理模型做了三重兼容：
+      1. 正文为空时，从 reasoning_content 里再找一次 JSON；
+      2. 首次调用拿不到 JSON 时，自动改用该平台的通用对话模型重试一次；
+      3. 把 finish_reason / 长度写进日志，便于定位"被截断"这类问题。
+    """
     if not llm.enabled:
         return None
     try:
@@ -772,29 +814,78 @@ async def _llm_json(llm: LLMConfig, prompt: str, temperature: float = 0.0, max_t
         logger.error("未安装 openai 包，无法调用 LLM")
         return None
 
-    client = AsyncOpenAI(api_key=llm.api_key, base_url=llm.base_url, timeout=90.0, max_retries=1)
+    client = AsyncOpenAI(api_key=llm.api_key, base_url=llm.base_url, timeout=120.0, max_retries=1)
     try:
-        resp = await client.chat.completions.create(
-            model=llm.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"},
-        )
-        content = (resp.choices[0].message.content or "").strip()
-    except Exception as e:
-        logger.warning("LLM(%s/%s) 调用失败：%s", llm.provider, llm.model, e)
-        return None
+        result = await _llm_json_once(client, llm, prompt, temperature, max_tokens, json_mode=True)
+
+        # 常见情况：模型不支持 json_object（如 deepseek-reasoner）→ 换个模型再试一次，
+        # 并改用"纯提示词要 JSON"的方式，不再依赖 response_format。
+        if result is None:
+            fb = _json_fallback_model(llm)
+            if fb:
+                logger.info("改用 %s 重试一次（%s 不支持 JSON 模式）", fb, llm.model)
+                retry_llm = LLMConfig(provider=llm.provider, model=fb, api_key=llm.api_key, base_url=llm.base_url)
+                result = await _llm_json_once(client, retry_llm, prompt, temperature, max_tokens, json_mode=True)
+                if result is None:
+                    result = await _llm_json_once(client, retry_llm, prompt, temperature, max_tokens, json_mode=False)
+        return result
     finally:
         try:
             await client.close()
         except Exception:
             pass
 
-    parsed = _extract_json(content)
-    if parsed is None:
-        logger.warning("LLM 返回无法解析为 JSON：%s", content[:200])
-    return parsed
+
+async def _llm_json_once(
+    client: Any, llm: LLMConfig, prompt: str, temperature: float, max_tokens: int, json_mode: bool,
+) -> Any:
+    kwargs: dict[str, Any] = {
+        "model": llm.model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        resp = await client.chat.completions.create(**kwargs)
+    except Exception as e:
+        logger.warning("LLM(%s/%s) 调用失败：%s", llm.provider, llm.model, e)
+        return None
+
+    content, reasoning, finish = _choice_text(resp)
+    logger.info("LLM(%s/%s) 返回：正文 %d 字，推理 %d 字，finish_reason=%s",
+                llm.provider, llm.model, len(content), len(reasoning), finish or "?")
+
+    parsed = _extract_json(content) if content else None
+    if parsed is not None:
+        return parsed
+
+    # 推理模型把答案写在 reasoning_content 里的情况
+    if reasoning:
+        parsed = _extract_json(reasoning)
+        if parsed is not None:
+            logger.info("已在 reasoning_content 中找到 JSON（该模型不支持 json_object，属预期）")
+            return parsed
+
+    if finish == "length":
+        logger.warning("LLM 输出被 max_tokens=%d 截断，建议调大 LLM_MAX_TOKENS", max_tokens)
+    logger.warning("LLM 返回无法解析为 JSON：正文=%r 推理=%r",
+                   content[:160], reasoning[:160])
+    return None
+
+
+def _json_fallback_model(llm: LLMConfig) -> str:
+    """
+    推理模型不支持 JSON 模式时，退回该平台的通用对话模型。
+    只在本平台内切换，避免把 DeepSeek 的 Key 发到 OpenAI 去。
+    """
+    base = (llm.base_url or "").lower()
+    model = (llm.model or "").lower()
+    if "deepseek" in base or model.startswith("deepseek"):
+        return "deepseek-chat" if model != "deepseek-chat" else ""
+    return ""
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1242,7 +1333,7 @@ async def tool_validate_relevance(
 只输出 JSON 对象，格式为 {{"results": [{{"paperId": "...", "score": 4, "reason": "具体中文理由", "type": "method"}}]}}。
 必须为列表中的每一篇论文都给出评分。"""
 
-        data = await _llm_json(llm, prompt, temperature=0.0, max_tokens=3000)
+        data = await _llm_json(llm, prompt, temperature=0.0, max_tokens=4096)
         score_map: dict[str, tuple[int, str, str]] = {}
         rows = data
         if isinstance(data, dict):
