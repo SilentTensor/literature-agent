@@ -6,11 +6,11 @@ set "URLFILE=public-url.txt"
 
 if not exist "%URLFILE%" (
   echo.
-  echo   Public URL file not found.
-  echo   The tunnel may not be running. Starting it now, please wait ~20s and retry.
+  echo   No public URL yet - the tunnel is probably still starting.
+  echo   Waiting 25 seconds, then trying again...
   echo.
   start "" wscript.exe "tunnel-hidden.vbs"
-  timeout /t 20 >nul
+  timeout /t 25 >nul
 )
 
 set "URL="
@@ -26,21 +26,22 @@ if "%URL%"=="" (
 
 echo.
 echo   ============================================================
-echo    Current public address:
+echo    PUBLIC ADDRESS - works on 4G, from other cities, anywhere
 echo.
 echo      %URL%
 echo.
-echo    ============================================================
+echo   ============================================================
 echo    Opening it in your browser...
 echo.
 echo    Notes:
-echo      - This address CHANGES when the tunnel reconnects.
-echo        Just run this file again to see the newest one.
-echo      - It only works while this computer is switched on.
-echo      - For people on the SAME campus wifi, the LAN address is
-echo        usually faster - see README.
+echo      - No warning page: phones can open this link directly.
+echo      - This address CHANGES if the tunnel reconnects.
+echo        Just run this file again to get the newest one.
+echo      - Works only while this computer is switched on.
+echo      - On the SAME campus wifi, this one is faster:
+echo          http://10.25.192.28:8765/
 echo.
 
 start "" "%URL%"
-echo   (You can close this window; the address above is copyable.)
-timeout /t 30 >nul
+echo   (Copy the address above before closing this window.)
+timeout /t 40 >nul
