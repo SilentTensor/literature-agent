@@ -17,3 +17,5 @@ logs/
 *.log
 .cdp-profile/
 shot_results.png
+public-url.txt
+logs/node_modules/
