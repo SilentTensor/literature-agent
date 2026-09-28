@@ -47,7 +47,11 @@ echo.
 echo       If a login window appears, choose "Sign in with your browser"
 echo       and click Authorize in the browser.
 echo.
-git push -u origin main
+rem --force: GitHub may already hold an auto-generated README, or an older
+rem version of this project, with no shared history with the local repo,
+rem which makes a normal push get rejected. This folder is the authoritative
+rem copy, so overwriting the remote branch is intended.
+git push --force -u origin main
 if errorlevel 1 goto failed
 
 echo.
