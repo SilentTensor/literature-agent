@@ -1,16 +1,16 @@
-# 统一换行符，避免不同系统 clone 之后脚本无法执行
+# 缁熶竴鎹㈣绗︼紝閬垮厤涓嶅悓绯荤粺 clone 涔嬪悗鑴氭湰鏃犳硶鎵ц
 * text=auto eol=lf
 
-# Windows 专用启动脚本必须是 CRLF，否则部分环境下无法运行
+# Windows 涓撶敤鍚姩鑴氭湰蹇呴』鏄?CRLF锛屽惁鍒欓儴鍒嗙幆澧冧笅鏃犳硶杩愯
 *.ps1  text eol=crlf
 *.vbs  text eol=crlf
 *.bat  text eol=crlf
 *.cmd  text eol=crlf
 
-# Dockerfile 必须是 LF，否则反斜杠续行会失效
-Dockerfile  text eol=lf
+# Dockerfile 蹇呴』鏄?LF锛屽惁鍒欏弽鏂滄潬缁浼氬け鏁?Dockerfile  text eol=lf
 
-# 二进制
-*.png  binary
+# 浜岃繘鍒?*.png  binary
 *.jpg  binary
 *.ico  binary
+
+*.sh  text eol=lf
