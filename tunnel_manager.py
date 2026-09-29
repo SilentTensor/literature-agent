@@ -31,7 +31,11 @@ URL_FILE = os.path.join(ROOT, "public-url.txt")
 LOG_FILE = os.path.join(ROOT, "logs", "tunnel.log")
 RAW_LOG = os.path.join(ROOT, "logs", "cloudflared.log")
 
-URL_RE = re.compile(r"(https://[a-z0-9][a-z0-9\-]*\.trycloudflare\.com)")
+# 匹配隧道地址。必须排除 Cloudflare 自己的 API 域名 —— 日志里出现过
+# "https://api.trycloudflare.com"，它的形状和隧道地址一模一样，会被误当成网址。
+URL_RE = re.compile(
+    r"(https://(?!api\.|www\.)[a-z0-9][a-z0-9\-]*\.trycloudflare\.com)"
+)
 
 
 def log(msg: str) -> None:
@@ -104,6 +108,7 @@ def main() -> int:
             time.sleep(3)
 
     attempt = 0
+    consecutive_failures = 0
     while True:
         attempt += 1
         log(f"starting cloudflared quick tunnel (attempt {attempt})")
@@ -127,6 +132,7 @@ def main() -> int:
         )
 
         got_url = False
+        rate_limited = False
         try:
             for line in proc.stdout:          # 逐行读，实时
                 line = line.rstrip()
@@ -136,10 +142,16 @@ def main() -> int:
                         raw.flush()
                     except OSError:
                         pass
+
+                if "429" in line:
+                    rate_limited = True
+                    log("cloudflared: 被限流(429) —— " + line[:140])
+
                 m = URL_RE.search(line)
                 if m:
                     publish(m.group(1))
                     got_url = True
+                    consecutive_failures = 0
                 elif "ERR" in line or "error" in line.lower():
                     log("cloudflared: " + line[:160])
         except Exception as e:
@@ -159,10 +171,20 @@ def main() -> int:
                 except Exception:
                     pass
 
-        if not got_url:
-            log("cloudflared exited without producing a URL")
-        log("reconnecting in 8 seconds ...")
-        time.sleep(8)
+        # ---- back off ----
+        # 原来的固定 8 秒重试会把 Cloudflare 的免费额度打爆：一旦被限流(429)，
+        # 继续猛敲只会让封禁更久。失败越多次，等待越久（上限 15 分钟）。
+        if got_url:
+            wait = 5
+        else:
+            consecutive_failures += 1
+            base = 20 if rate_limited else 10
+            wait = min(base * (2 ** min(consecutive_failures - 1, 6)), 900)
+            log(f"cloudflared exited without producing a URL "
+                f"(失败第 {consecutive_failures} 次{ '，已被限流' if rate_limited else ''})")
+
+        log(f"next attempt in {wait} seconds ...")
+        time.sleep(wait)
 
 
 if __name__ == "__main__":
